@@ -2,7 +2,7 @@
 [INFO]
 
 NAME = SpeedTree Placer
-VERSION = 1.2.6
+VERSION = 1.2.7
 AUTHOR = MastaMan
 DEV = SightLine Vision
 HELP = 
@@ -22,6 +22,12 @@ HELP =
 
 -BugFix: Dublicate items bug when pick tree=
 -BugFix: Error when delete trees with hotkey Alt=
+
+[1.2.7]
+
++ Added: Drop Trees section with drop features=
+* Adopted for Unreal=
+- BugFix: In place mode delete non tree objects=
 
 [ABOUT]
 
@@ -177,9 +183,18 @@ fn SelectedDir p =
 	)
 )
 
+fn stripName n =
+(
+	return trimRight n "_&0123456789"
+)
 
 rollout rPlacer "Trees List"
 (	
+	group "Engine"
+	(
+		radiobuttons rdoExportFor  "" labels:#("Neo", "Unreal Engine") align: #left columns: 1
+	)
+	
 	group "Project"
 	(
 		edittext edtBrowse "" width:253 height:25 readOnly:true text: "Please select speedtree folder" offset: [-7, 0]
@@ -200,7 +215,7 @@ rollout rPlacer "Trees List"
 	group "Parameters"
 	(
 		spinner spnScale "Scale:" range:[0.001,99999,1]  fieldWidth: 40 align: #left across: 3
-		spinner spnSize "Size:" range:[0.01,99999,1] fieldWidth: 40 type: #worldunits
+		spinner spnSize "Size:" range:[0.01,99999, (units.decodeValue "100.0cm")] fieldWidth: 40 type: #worldunits
 		spinner spnZ "Z:" range:[0,99999,1] fieldWidth: 40 type: #worldunits
 		editText edtAliasName "Alias:" width: 170 across: 2
 		colorPicker cpColor "" color: (color 0 0 0) width: 70 offset: [50, -2]
@@ -222,13 +237,9 @@ rollout rPlacer "Trees List"
 	(
 		for i in rPlacer.controls do i.enabled = d
 		rPlacer.btnBrowse.enabled = true
+		rPlacer.rdoExportFor.enabled = true
 	)
-	
-	fn stripName n =
-	(
-		return trimRight n "_&0123456789"
-	)
-	
+
 	fn sessionSave =
 	(
 		s = ""
@@ -336,7 +347,7 @@ rollout rPlacer "Trees List"
 	(
 		spnScale.value = try(Trees[id][4]) catch(1.0)
 		spnZ.value = try(Trees[id][2]) catch(0.0)
-		spnSize.value = try(Trees[id][5]) catch(1.0)
+		spnSize.value = try(Trees[id][5]) catch(units.decodeValue "100.0cm")
 		cpColor.color = try(Trees[id][3]) catch((color 0 0 0))
 		edtAliasName.text = try(Trees[id][6]) catch("")
 		--rScatter.spnScatterDistance.value = spnSize.value
@@ -475,7 +486,7 @@ rollout rPlacer "Trees List"
 		
 		return z
 	)
-	
+		
 	tool SpeedTreePlacer
 	(
 		local b
@@ -511,8 +522,11 @@ rollout rPlacer "Trees List"
 			
 			if(altKey or ctrlKey) then 
 			(
-				try(delete b)catch()
-				b = undefined
+				if(classOf b == Box) do
+				(
+					try(delete b)catch()
+					b = undefined
+				)
 			)
 			
 			if(altKey and lButton) then
@@ -520,7 +534,7 @@ rollout rPlacer "Trees List"
 				a = circlePickNode (box2 (viewPoint + 4) (viewPoint - 4))
 				
 				--for i in a where findString i.name Trees[id][1] != undefined and isDeleted i == false do try(delete i)catch()							
-				for i in a where isDeleted i != true and isValidNode i and classOf i != Point do delete i
+				for i in a where isDeleted i != true and isValidNode i and classOf i == Box do delete i
 			)			
 				
 			if(ctrlKey and lButton and moveObject == undefined) then 
@@ -576,6 +590,11 @@ rollout rPlacer "Trees List"
 		lbxTrees.Refresh()
 	)
 	
+	on rdoExportFor changed s do
+	(
+		try(fileProperties.addProperty #custom "Used Engine" (rdoExportFor.state)) catch()	
+	)
+	
 	fn pickTree =
 	(	
 		/* 1 - TreeName; 2 - Z pos; 3 - Color; 4 - Scale; 5 - Size; 6 - Alias */
@@ -612,7 +631,7 @@ rollout rPlacer "Trees List"
 		/* 1 - TreeName; 2 - Z pos; 3 - Color; 4 - Scale; 5 - Size; 6 - Alias */
 		
 		c = random black white
-		Tree  = #(t, 0.0, c, 1.0, 1.0, t)
+		Tree  = #(t, 0.0, c, 1.0, (units.decodeValue "100.0cm"), t)
 		
 		append Trees Tree
 		
@@ -630,9 +649,12 @@ rollout rPlacer "Trees List"
 		t = szSpeedTreeFolder
 		
 		if(t == undefined) do return false
-				
-		f = getFiles (t + @"\*.srt")
-		t = for i in f collect filenameFromPath i
+		
+		f = #()
+		if(rPlacer.rdoExportFor.state == 1) do f = getFiles (t + @"\*.srt")
+		if(rPlacer.rdoExportFor.state == 2) do f = getDirectories (t + @"\*")
+		
+		t = for i in f collect trimRight (filenameFromPath i) "\\"
 			
 		p = btnAddReferenceTree.pos
 		p.y += 27
@@ -819,6 +841,13 @@ rollout rPlacer "Trees List"
 		try(rSpeedTreePlacer.pos = [x, y]) catch()
 		
 		i = fileProperties.findProperty #custom "SpeedTree Project"
+		i2 = fileProperties.findProperty #custom "Used Engine"
+		
+		if(i2 != 0) do
+		(
+			rdoExportFor.state = fileProperties.getPropertyValue #custom i2
+		)
+		
 		if(i != 0) do 
 		(
 			szSpeedTreeFolder = fileProperties.getPropertyValue #custom i
@@ -894,21 +923,14 @@ rollout rPlacer "Trees List"
 		szSpeedTreeFolder = getSavePath caption:"Browse" initialDir: szInitalDir
 				
 		if(szSpeedTreeFolder != undefined and szSpeedTreeFolder != "") then
-		(
-			if(findString szSpeedTreeFolder "export" == undefined) then 
+		(																			
+			if(t != szSpeedTreeFolder) do 
 			(
-				messageBox "Please select Export folder!" title: "Warning"
+				initDotNet()
+				getParams 0
+				Trees = #()
 			)
-			else
-			(																				
-				if(t != szSpeedTreeFolder) do 
-				(
-					initDotNet()
-					getParams 0
-					Trees = #()
-				)
-				browseProject()						
-			)
+			browseProject()									
 		)	
 		else if(szSpeedTreeFolder == undefined and t != undefined) then		
 		(
@@ -1383,6 +1405,61 @@ rollout rScatter "Scatter"
 	)
 )
 
+rollout rDrop "Drop Trees"
+(
+	button btnDropTrees "Drop Selected Trees" height: 25 width: 150
+	
+	fn getRay b =
+	(	
+		p = b.pos
+				
+		r = ray p [0,0,-1]
+
+		h = intersectRayScene r
+			
+		z = b.pos.z
+		
+		offset = rPlacer.spnSurfaceOffset.value
+		
+		
+		if(h[1] != undefined) do
+		(						
+			t = for i in Trees collect i[1]
+			o = for i in h where findItem t (stripName i[1].name) == 0 collect i[2].pos.z
+				
+			if(o.count > 0) do z = o[1] + offset			
+		)
+		
+		return z
+	)
+	
+	
+	on btnDropTrees pressed do
+	(
+		dropTrees = for i in selection where classOf i == Box collect i
+			
+		progressStart "Drop Trees..."
+		escapeEnable
+		
+		disableSceneRedraw()
+		
+		for i in 1 to dropTrees.count do
+		(
+			 dropTrees[i].pos.z = getRay dropTrees[i]
+			
+				progressUpdate (100.0 * i / dropTrees.count)
+				if(getProgressCancel() == true)do exit	
+		)
+		
+		enableSceneRedraw()
+		enableSceneRedraw()
+		enableSceneRedraw()
+		forceCompleteRedraw()
+		
+		progressEnd()
+	)
+)
+
 rollout rTools "Tools"
 (
 	group "Session"
@@ -1548,5 +1625,6 @@ rollout rAbout "About"
 
 addRollout rPlacer rSpeedTreePlacer rolledUp:false 
 addRollout rScatter rSpeedTreePlacer rolledUp:true
+addRollout rDrop rSpeedTreePlacer rolledUp:true
 addRollout rTools rSpeedTreePlacer rolledUp:true 
 addRollout rAbout rSpeedTreePlacer rolledUp:true 
