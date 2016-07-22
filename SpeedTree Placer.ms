@@ -2,7 +2,7 @@
 [INFO]
 
 NAME = SpeedTree Placer
-VERSION = 1.2.7
+VERSION = 1.2.8
 AUTHOR = MastaMan
 DEV = SightLine Vision
 HELP = 
@@ -28,6 +28,9 @@ HELP =
 + Added: Drop Trees section with drop features=
 * Adopted for Unreal=
 - BugFix: In place mode delete non tree objects=
+
+[1.2.8]
++ Added: Preview trees=
 
 [ABOUT]
 
@@ -68,7 +71,7 @@ fn parseToLine m =
 
 
 try(closeRolloutFloater rSpeedTreePlacer)catch()
-global rSpeedTreePlacer = newRolloutFloater "SpeedTree Placer" 280 870
+global rSpeedTreePlacer = newRolloutFloater "SpeedTree Placer" 280 960
 
 /* 1 - TreeName; 2 - Z pos; 3 - Color; 4 - Scale; 5 - Size; 6 - Alias */
 global Trees = #()
@@ -79,6 +82,9 @@ global rScatter
 global hPickedShape = undefined
 global szSpeedTreeFolder = ""
 global iWindowPos = [0.0, 0.0]
+
+-- Previews for NEO and Unreal
+global szPreviewsPath = #(@"d:\content\speedtree\Speedtree_UE\preview\", @"d:\content\speedtree\Speedtree_UE\preview\")
 
 
 fn useSettings k p w =
@@ -204,6 +210,14 @@ rollout rPlacer "Trees List"
 	global Clr = dotNetClass "System.Drawing.Color"	
 	dotNetControl lbxTrees "system.windows.forms.listView" height:265 width: 260	offset:[-10, 0]
 	
+	group "Preview"
+	(
+		--bitmap btmPreview "" height: 100 width: 100 align: #left across: 2 
+		button btmPreview "No preview" height: 100 width: 100 align: #left across: 2 border: false
+		label lblInfo "Info:\n\nSize: \n" align: #left width: 143 height: 100 offset: [-13, 0]
+
+	)
+		
 	button btnAddReferenceTree "Add" width:100 height:25 across: 2 offset: [0, 5] toolTip: "Add Tree To List" enabled: false
 	button btnDublicateReferenceTree "Dublicate" width:100 height:25 offset: [0, 5] toolTip: "Dublicate Tree In List"
 		
@@ -211,6 +225,7 @@ rollout rPlacer "Trees List"
 	button btnDeleteReferenceTree "Delete" width:100 height:25 offset: [0, 5] toolTip: "Delete Tree From List"
 
 	timer tmrColor "" active: false interval: 1000
+	timer tmrPreview "" active: false interval: 1
 	
 	group "Parameters"
 	(
@@ -350,6 +365,14 @@ rollout rPlacer "Trees List"
 		spnSize.value = try(Trees[id][5]) catch(units.decodeValue "100.0cm")
 		cpColor.color = try(Trees[id][3]) catch((color 0 0 0))
 		edtAliasName.text = try(Trees[id][6]) catch("")
+		
+		m = "Info: "
+		m += "\n\nAlias: " + edtAliasName.text 
+		m += "\nScale: " + spnScale.value as string
+		m += "\nSize: " + spnSize.value as string
+		m += "\nZ: " + spnZ.value as string
+		
+		lblInfo.caption = m
 		--rScatter.spnScatterDistance.value = spnSize.value
 	)
 	
@@ -421,6 +444,8 @@ rollout rPlacer "Trees List"
 		)
 		
 		getParams id
+		
+		tmrPreview.active = true
 					
 		SelectedColorLbxList 0
 	)
@@ -434,6 +459,8 @@ rollout rPlacer "Trees List"
 		Trees[id][4] = spnScale.value
 		Trees[id][2] = spnZ.value
 		Trees[id][5] = spnSize.value
+		
+		getParams id
 		
 		sessionSave()
 	)
@@ -684,6 +711,43 @@ rollout rPlacer "Trees List"
 	
 	)
 	
+	fn getPreview id show: false=
+	(
+		if(Trees.count == 0) do return false
+		
+		i = rdoExportFor.state
+		
+		p = szPreviewsPath[i]
+		
+		f = p + (getFileNameFile Trees[id][1]) + ".png"
+		
+		
+		btmPreview.images = undefined
+		if(f != undefined and doesFileExist f) do 
+		(
+			b = openBitMap f
+			btmPreview.images = #(b, undefined, 1,1,1,1,1 )		
+			
+			if(show) do display b
+		)
+	)
+	
+	on tmrPreview tick do 
+	(
+		id = getID()
+		
+		getPreview id
+		
+		tmrPreview.active = false
+	)
+	
+	on btmPreview pressed do 
+	(
+		id = getID()
+		
+		getPreview id	show: true
+	)
+	
 	on lbxTrees MouseClick a do
 	(				
 		/*h = lbxTrees.HitTest (dotNetObject "System.Drawing.Point" a.x a.y)
@@ -693,7 +757,9 @@ rollout rPlacer "Trees List"
 			
 		id = getID()
 				
-		getParams id				
+		getParams id	
+
+		tmrPreview.active = true
 	)
 	
 	on edtAliasName entered v do
@@ -928,6 +994,8 @@ rollout rPlacer "Trees List"
 			(
 				initDotNet()
 				getParams 0
+				
+				tmrPreview.active = true
 				Trees = #()
 			)
 			browseProject()									
