@@ -2,7 +2,7 @@
 [INFO]
 
 NAME = SpeedTree Placer
-VERSION = 1.2.8
+VERSION = 1.2.9
 AUTHOR = MastaMan
 DEV = SightLine Vision
 HELP = 
@@ -27,10 +27,16 @@ HELP =
 
 + Added: Drop Trees section with drop features=
 * Adopted for Unreal=
-- BugFix: In place mode delete non tree objects=
 
 [1.2.8]
 + Added: Preview trees=
+
+[1.2.9]
+
+* Now build trees list from actually files for Unreal=
+- BugFix: Error when delete boxes in Alt + Place mode=
++ Added: Paint features=
++ Added: Brush size option=
 
 [ABOUT]
 
@@ -73,7 +79,7 @@ fn parseToLine m =
 try(closeRolloutFloater rSpeedTreePlacer)catch()
 global rSpeedTreePlacer = newRolloutFloater "SpeedTree Placer" 280 960
 
-/* 1 - TreeName; 2 - Z pos; 3 - Color; 4 - Scale; 5 - Size; 6 - Alias */
+/* 1 - TreeName; 2 - Z pos; 3 - Color; 4 - Scale; 5 - Size; 6 - Alias; 7 - Brush Size*/
 global Trees = #()
 global objectsInRow = #()
 global bTreesChecked = false
@@ -237,22 +243,53 @@ rollout rPlacer "Trees List"
 	)
 
 	group "Place Settings"
-	(
+	(		
 		checkbox cbxRandomRotate "Random Rotate" checked: true
 		checkbox cbxRandomScale "Random Scale ±" across: 3 checked:true
 		spinner spnRandomScalePercent  range:[0,99999,10] scale:5 fieldWidth: 40 offset: [-10, 0]
-		label lblPercent "%" offset: [-43, 0]
-		checkbox cbxPlaceOnSurface "Place On Ground" checked: false across: 2
-		spinner spnSurfaceOffset "Offset:" range:[0,9999,0.2] fieldWidth: 40 type: #worldunits aligh: #left offset: [-30, 1]
+		label lblPercent "%" offset: [-43, 0]		
+		spinner spnBrushSize "Brush Size:" range: [(units.decodeValue "10cm"), (units.decodeValue "3000cm"), (units.decodeValue "500cm")] fieldWidth: 60 type: #worldunits align: #right offset: [-115, 0]
+		spinner spnDistance "Distance:   " range: [(units.decodeValue "10cm"), 99999999, (units.decodeValue "200cm")] fieldWidth: 60 type: #worldunits align: #right offset: [-115, 0]
+		checkbox cbxPlaceOnSurface "Place On Ground    (" checked: false across: 2				
+		checkbox cbxFollowDirection "Follow Direction)" checked: false
 	)
-		
+	
 	checkButton btnPlaceTree "Place" width:180 height:45
+	radiobuttons rdoMode "" labels: #("Placer", "Painter") columns: 2			
 
-	fn disableUI d =
+	fn placeMode =
+	(
+		a = rdoMode.state
+		
+		case a of
+		(
+			2: 
+			(
+				spnBrushSize.enabled =  true
+				cbxPlaceOnSurface.enabled = false
+				cbxFollowDirection.enabled = false
+				btnPlaceTree.caption = "Paint"
+			)
+			default:
+			(
+				spnBrushSize.enabled =  false
+				cbxPlaceOnSurface.enabled = true
+				cbxFollowDirection.enabled = true
+				btnPlaceTree.caption = "Place"
+			)
+		)
+		
+		return a
+	)
+	
+	fn disableUI d place: false =
 	(
 		for i in rPlacer.controls do i.enabled = d
-		rPlacer.btnBrowse.enabled = true
-		rPlacer.rdoExportFor.enabled = true
+		rPlacer.btnBrowse.enabled = not place
+		rPlacer.rdoExportFor.enabled = not place
+		rPlacer.btnPlaceTree.enabled = d or place
+		
+		if(not place) do placeMode()
 	)
 
 	fn sessionSave =
@@ -406,7 +443,7 @@ rollout rPlacer "Trees List"
 		z = for i = 0 to c where c > 0 and lbxTrees.Items.Item[i] != undefined and lbxTrees.Items.Item[i].Checked == true collect i		
 		return z					
 	)
-
+	
 	fn reloadTreesList =
 	(
 		id = getID()
@@ -447,7 +484,7 @@ rollout rPlacer "Trees List"
 		
 		tmrPreview.active = true
 					
-		SelectedColorLbxList 0
+		SelectedColorLbxList 0				
 	)
 
 	fn setParams =
@@ -459,7 +496,7 @@ rollout rPlacer "Trees List"
 		Trees[id][4] = spnScale.value
 		Trees[id][2] = spnZ.value
 		Trees[id][5] = spnSize.value
-		
+				
 		getParams id
 		
 		sessionSave()
@@ -499,10 +536,7 @@ rollout rPlacer "Trees List"
 		h = intersectRayScene r
 			
 		z = b.pos.z
-		
-		offset = rPlacer.spnSurfaceOffset.value
-		
-		
+				
 		if(h[1] != undefined) do
 		(						
 			t = for i in Trees collect i[1]
@@ -519,21 +553,23 @@ rollout rPlacer "Trees List"
 		local b
 		local moveObject = undefined
 		local id = getID()
-			
+		local brushSize = rPlacer.spnBrushSize.value / 2.0
+		local brush = Circle radius: brushSize isSelected:off wirecolor: red name: "brush" 
+		local posZ
+		local checkedList = getCheckedLbxListID()
+		
 		on mousePoint x do
 		(		
 			if(not altKey) then
 			(																
 				if(not ctrlKey) do 
 				(										
-					z = getCheckedLbxListID()
-					if(z.count > 1) do
+					if(checkedList.count > 1) do
 					(
-						r = random 1 z.count
-						id = z[r] + 1
+						r = random 1 checkedList.count
+						id = checkedList[r] + 1
 					)
-					
-					
+										
 					b = createTree id gridPoint
 					b.pos = worldPoint
 					
@@ -542,20 +578,65 @@ rollout rPlacer "Trees List"
 				)										
 			)				
 		)
-
+		
+		on freeMove do brush.pos = worldPoint
 		
 		on mouseMove x do
-		(		
+		(	
+			brush.pos = worldPoint
 			
 			if(altKey or ctrlKey) then 
 			(
-				if(classOf b == Box) do
+				if(isValidNode b and classOf b == Box) do
 				(
 					try(delete b)catch()
 					b = undefined
 				)
 			)
+				
+			if(b != undefined and isValidNode b) then 
+			(				
+				b.pos = worldPoint				
+				posZ 	= Trees[id][2]				
+				b.pos.z = posZ
+				
+				if(rPlacer.cbxPlaceOnSurface.checked == true) do 
+				(					
+					posZ = getRay b
+					b.pos.z = posZ												
+					brush.pos = b.pos
+				)
+			)	
 			
+			-- Brush place
+			if(lButton and not altKey and not ctrlKey) then
+			(				
+				a = circlePickNode (box2 (viewPoint + 50) (viewPoint - 50))	
+				
+				w = worldPoint
+				w.z = posZ
+					
+				d = for k in a where classof k == Box and (distance k.pos w) < brushSize collect k
+					
+				if(d.count < 2) do
+				(						
+					if(checkedList.count > 1) do
+					(
+						r = random 1 checkedList.count
+						id = checkedList[r] + 1
+					)
+					
+					b = createTree id gridPoint
+					b.pos = worldPoint
+					
+					b.pos.z = Trees[id][2]				
+					if(rPlacer.cbxPlaceOnSurface.checked == true) do b.pos.z = posZ
+					
+					brush.pos = b.pos
+				)				
+			)
+			
+			-- Delete
 			if(altKey and lButton) then
 			(								 				
 				a = circlePickNode (box2 (viewPoint + 4) (viewPoint - 4))
@@ -563,7 +644,8 @@ rollout rPlacer "Trees List"
 				--for i in a where findString i.name Trees[id][1] != undefined and isDeleted i == false do try(delete i)catch()							
 				for i in a where isDeleted i != true and isValidNode i and classOf i == Box do delete i
 			)			
-				
+			
+			-- Move
 			if(ctrlKey and lButton and moveObject == undefined) then 
 			(								
 				a = circlePickNode (box2 (viewPoint + 4) (viewPoint - 4))
@@ -579,14 +661,6 @@ rollout rPlacer "Trees List"
 			(
 				moveObject = undefined
 			)
-						
-			if(b != undefined) then 
-			(				
-				b.pos = worldPoint
-				b.pos.z = Trees[id][2]				
-				
-				if(rPlacer.cbxPlaceOnSurface.checked == true) do b.pos.z = getRay b												
-			)	
 
 			if(moveObject != undefined) do
 			(
@@ -600,8 +674,362 @@ rollout rPlacer "Trees List"
 		on mouseAbort x do
 		(
 			try(delete b)catch()
+			try(delete brush) catch()
 			btnPlaceTree.checked = false
 		)				
+	)
+	
+	fn getIntersect b =
+	(	
+		p = b.pos
+		p.z = 1000000.0
+		
+		r = ray p [0,0,-1]
+
+		h = intersectRayScene r
+			
+		z = b.pos.z
+				
+		if(h[1] != undefined) do
+		(						
+			t = for i in Trees collect i[1]
+			o = for i in h where classOf i[1] != Box do return i[1].pos.z							
+		)
+		
+		return z
+	)
+	
+	fn brushPaint r d id =
+	(	
+		pos = mapScreenToCP mouse.pos
+		pos.z = Trees[id][2]
+				
+		c = ((r / d) ^ 2) * 2
+		if(c < 1.0) do c = 1
+	
+		m = #()		
+		
+		a = circlePickNode (box2 (mouse.pos + 100) (mouse.pos - 100))	
+		m2 = for k in a where classof k == Box collect k.pos
+			
+		for i in 1 to c do 
+		(	
+			for k in 1 to 10 do
+			(
+				x = random -r r
+				y = random -r r
+				z = 0
+
+				p = [x, y, z] + pos
+								
+				u = for ii in m where distance ii p < d collect ii
+				u2 = for ii in m2 where distance ii p < d collect ii
+							
+				if(u.count == 0 and u2.count == 0 and distance pos p < r ) do 
+				(
+					--p.z = Trees[id][2]
+					
+					append m p	
+					exit
+				)
+			)				
+		)
+		
+		return m
+	)
+	
+	fn getScreenPos ir id =
+	(
+		if(ir != undefined and rPlacer.cbxPlaceOnSurface.checked) do return ir.pos
+		
+		m = mapScreenToCP mouse.pos
+		m.z = Trees[id][2]
+		return m
+	)
+	
+	fn trackRay placeObj ir id =
+	(
+		currentRotation = placeObj.rotation as eulerAngles
+		
+		if(ir != undefined and rPlacer.cbxPlaceOnSurface.checked) then
+		(											
+			placeObj.pos = ir.pos 
+			if(rPlacer.cbxFollowDirection.checked) do placeObj.dir = ir.dir
+				
+			if(superClassOf placeObj != Shape) do in coordsys local rotate placeObj (eulerAngles 0 0 (random 0.0 360.0))
+			
+			return #continue
+		)
+		else
+		(			
+			placeObj.pos = mapScreenToCP mouse.pos
+			placeObj.pos.z = Trees[id][2]
+			
+			placeObj.dir = [0,0,1]
+		
+			if(superClassOf placeObj != Shape) do in coordsys local rotate placeObj (eulerAngles 0 0 (random 0.0 360.0))
+			
+			return #continue
+		)				
+	)
+	
+	fn getRandomId id c = 
+	(
+		if(c.count > 1) do
+		(
+			r = random 1 c.count
+			id = c[r] + 1
+			
+			return id
+		)		
+		
+		return id
+	)
+	
+	fn brushMode =
+	(
+		global brushSize = rPlacer.spnBrushSize.value / 2.0
+		global brushDensity = rPlacer.spnDistance.value / 2.0
+		global brush = Circle radius: brushSize  isSelected:off wirecolor: red name: "brush" 
+		global density = Circle radius: brushDensity  isSelected:off wirecolor: yellow name: "density" 
+		global radius = Text size: (units.decodeValue "100.0cm") name: "radius" wirecolor: green
+		global id = getID()
+		global checkedList = getCheckedLbxListID()
+		global placeObj = undefined
+		global isMove = false
+		
+		hide radius
+		
+		disableUI false place: true
+		
+		fn mouseTrackCallback msg ir obj faceNum shift ctrl alt =
+		(	
+			global initMousePos
+			
+			case msg of
+			(
+				#freeMove:
+				(	
+					initMousePos = mouse.pos					
+					trackRay brush ir id
+					trackRay density ir id
+					trackRay radius ir id
+					
+					/*
+					if(isMove) do
+					(
+						try(delete placeObj) catch()
+						isMove = false
+					)*/
+									
+					
+					isMove = false
+					hide radius
+					
+					return #continue
+				)
+				#mouseAbort:
+				(																								
+					try(delete brush) catch()
+					try(delete density) catch()
+					try(delete radius) catch()
+					btnPlaceTree.checked = false
+								
+					disableUI true
+					
+					return #end
+				)
+				#mousePoint:
+				(										
+					if(not isMove) do
+					(
+						id = getRandomId id checkedList
+					
+						placeObj = createTree id [0, 0, 0]
+						trackRay placeObj ir id
+					)
+										
+					return #continue
+				)
+				#mouseMove:
+				(
+						
+					r = rPlacer.spnBrushSize.value / 2.0
+					d = rPlacer.spnDistance.value
+					
+					isMove = true	
+					
+					if(not ctrl and not shift) do
+					(
+						trackRay brush ir id
+						trackRay density ir id
+						trackRay radius ir id
+																
+						p = brushPaint r d id
+						
+						disableSceneRedraw()
+						
+						for i in p do
+						(
+							id = getRandomId id checkedList
+													
+							t = createTree id i 
+													
+							--if(rPlacer.cbxPlaceOnSurface.checked) do t.pos.z = getIntersect t
+						)
+						
+						enableSceneRedraw()
+					)
+					
+					if(ctrl) do
+					(					
+						s = (initMousePos.y - mouse.pos.y) 
+						v = rPlacer.spnBrushSize.value
+						
+						case of
+						(
+							(s <= 0.0) : v = v - (units.decodeValue "25.0cm")
+							default:  v = v + (units.decodeValue "25.0cm")
+						)
+						
+						maxVal = (rPlacer.spnBrushSize.range)[2]
+						minVal = rPlacer.spnDistance.value
+						
+						if(v <= maxVal and v >= minVal) do
+						(
+							rPlacer.spnBrushSize.value = v
+							brush.radius = rPlacer.spnBrushSize.value / 2.0
+						)
+
+						unhide radius
+						radius.text = "Brush: " + rPlacer.spnBrushSize.value as string
+						o = -rPlacer.spnBrushSize.value
+						radius.pos = brush.pos + [o / 20, -o / 2,0]
+					)
+					
+					if(shift) do
+					(
+						s = (initMousePos.y - mouse.pos.y)
+						v = rPlacer.spnDistance.value
+						
+						case of
+						(
+							(s <= 0.0) : v = v - (units.decodeValue "10.0cm")
+							default:  v = v + (units.decodeValue "10.0cm")
+						)
+						
+						maxVal = rPlacer.spnBrushSize.value
+						minVal = (rPlacer.spnDistance.range)[1]
+						
+						if(v <= maxVal and v >= minVal) do
+						(
+							rPlacer.spnDistance.value = v
+							density.radius = rPlacer.spnDistance.value / 2.0
+						)
+						
+						unhide radius
+						radius.text =  "Distance: " + rPlacer.spnDistance.value as string
+						o = -rPlacer.spnBrushSize.value
+						radius.pos = brush.pos + [o / 20, -o / 2,0]
+					)				
+					
+					return #continue
+				)									
+			)
+		)
+				
+		o = for i in geometry where i.isHidden == false and classOf i != Box collect i
+		trackCallback = mouseTrack on:o trackCallBack: mouseTrackCallback
+	)
+	
+	fn placeObject =
+	(			
+		global id = getID()
+		global checkedList = getCheckedLbxListID()
+		global placeObj = undefined
+		global isMove = false
+		
+		disableUI false place: true
+		
+		fn mouseTrackCallback msg ir obj faceNum shift ctrl alt =
+		(	
+			case msg of
+			(
+				#freeMove:
+				(												
+					return #continue
+				)
+				#mouseAbort:
+				(																								
+					btnPlaceTree.checked = false
+					
+					disableUI true
+								
+					return #end
+				)
+				#mousePoint:
+				(										
+					id = getRandomId id checkedList
+					
+					placeObj = createTree id [0, 0, 0]
+					trackRay placeObj ir id
+					
+					if(isMove) do
+					(
+						try(delete placeObj) catch()
+						isMove = false
+					)
+					
+					return #continue
+				)
+				#mouseMove:
+				(	
+					isMove = true	
+					
+					if(not alt and not ctrl) do
+					(
+						d = rPlacer.spnDistance.value
+										
+						a = circlePickNode (box2 (mouse.pos + 50) (mouse.pos - 50))	
+						m2 = for k in a where classof k == Box collect k.pos
+						
+						s = getScreenPos ir id
+						
+						y = for i in m2 where distance i s < d collect i 
+						
+						if(y.count == 0) do
+						(
+							placeObj = createTree id [0, 0, 0]
+							trackRay placeObj ir id 
+						)
+					)
+					
+					if(alt) do
+					(
+						a = circlePickNode (box2 (mouse.pos + 4) (mouse.pos - 4))
+							
+						for i in a where isDeleted i != true and isValidNode i and classOf i == Box do delete i
+					)
+					
+					if(ctrl) do
+					(
+						a = circlePickNode (box2 (mouse.pos + 3) (mouse.pos - 3))
+					
+						for i in a where isDeleted i != true and isValidNode i and classOf i == Box do 
+						(
+							trackRay i ir id
+													
+							exit
+						)
+					)
+					
+					return #continue
+				)									
+			)
+		)
+				
+		o = for i in geometry where i.isHidden == false and classOf i != Box collect i
+		trackCallback = mouseTrack on:o trackCallBack: mouseTrackCallback
 	)
 	
 	on lbxTrees columnClick x do
@@ -671,18 +1099,48 @@ rollout rPlacer "Trees List"
 		SelectedColorLbxList (Trees.count - 1)		
 	)
 	
+	fn getTreesNames =
+	(
+		s = rPlacer.rdoExportFor.state
+		f = #()
+		t = szSpeedTreeFolder
+		
+		case s of
+		(
+			2:
+			(
+				d = getDirectories (t + @"\*")
+				append d t
+				
+				for i in d do 
+				(
+					a = getFiles (i + @"\*.uasset")
+										
+					for ii in a do
+					(	
+						n = filenameFromPath ii
+						z = findString n "_Atlas_"
+						
+						if (z != undefined and z > 1) do appendIfUnique f (substring n 1 (z - 1))
+					)
+				)
+			)
+			default: 
+			(
+				f = getFiles (t + @"\*.srt")			
+				f = for i in f collect filenameFromPath i				
+			)
+		)
+		
+		return f
+	)
+	
 	on btnAddReferenceTree pressed do
 	(
 		t = szSpeedTreeFolder
+					
+		t = getTreesNames()
 		
-		if(t == undefined) do return false
-		
-		f = #()
-		if(rPlacer.rdoExportFor.state == 1) do f = getFiles (t + @"\*.srt")
-		if(rPlacer.rdoExportFor.state == 2) do f = getDirectories (t + @"\*")
-		
-		t = for i in f collect trimRight (filenameFromPath i) "\\"
-			
 		p = btnAddReferenceTree.pos
 		p.y += 27
 		
@@ -730,6 +1188,11 @@ rollout rPlacer "Trees List"
 			
 			if(show) do display b
 		)
+	)
+		
+	on rdoMode changed a do
+	(
+		placeMode()
 	)
 	
 	on tmrPreview tick do 
@@ -894,7 +1357,14 @@ rollout rPlacer "Trees List"
 		SelectedColorLbxList 0
 		--reloadTreesList()
 		
-		startTool SpeedTreePlacer
+		--startTool SpeedTreePlacer	
+		
+		m = rdoMode.state
+		case m of 
+		(
+			2: brushMode()
+			default: 	placeObject()				
+		)
 	)
 	
 	on rPlacer open do
@@ -944,6 +1414,7 @@ rollout rPlacer "Trees List"
 	
 	on spnScale changed v do setParams()
 	on spnSize changed v do setParams()
+	on spnBrushSize changed v do setParams()
 	on spnZ changed v do setParams()
 	
 	on cpColor changed v do 
@@ -1486,16 +1957,16 @@ rollout rDrop "Drop Trees"
 		h = intersectRayScene r
 			
 		z = b.pos.z
+			
 		
-		offset = rPlacer.spnSurfaceOffset.value
-		
-		
-		if(h[1] != undefined) do
+		if(h[1] != undefined) then
 		(						
-			t = for i in Trees collect i[1]
-			o = for i in h where findItem t (stripName i[1].name) == 0 collect i[2].pos.z
+			/*t = for i in Trees collect i[1]
+			o = for i in h where findItem t (stripName i[1].name) == 0 collect i[2].pos.z*/
+			
+			o = for i in h where classOf i != Box collect i[2].pos.z
 				
-			if(o.count > 0) do z = o[1] + offset			
+			if(o.count > 0) do z = o[1] 		
 		)
 		
 		return z
@@ -1511,18 +1982,25 @@ rollout rDrop "Drop Trees"
 		
 		disableSceneRedraw()
 		
+		bWarning = false
+		
 		for i in 1 to dropTrees.count do
 		(
-			 dropTrees[i].pos.z = getRay dropTrees[i]
+			z1 = dropTrees[i].pos.z
+			z2 = getRay dropTrees[i]
+			if(z1 == z2) do bWarning = true
+			dropTrees[i].pos.z = z2
 			
-				progressUpdate (100.0 * i / dropTrees.count)
-				if(getProgressCancel() == true)do exit	
+			progressUpdate (100.0 * i / dropTrees.count)
+			if(getProgressCancel() == true)do exit	
 		)
 		
 		enableSceneRedraw()
 		enableSceneRedraw()
 		enableSceneRedraw()
 		forceCompleteRedraw()
+		
+		if(bWarning) do messageBox "Some trees not dropped!" title: "Warning!"
 		
 		progressEnd()
 	)
