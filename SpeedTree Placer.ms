@@ -881,14 +881,13 @@ rollout rPlacer "Trees List"
 						enableSceneRedraw()
 					)
 					
-					if(ctrl) do
+					if(shift) do
 					(					
-						s = (initMousePos.y - mouse.pos.y) 
 						v = rPlacer.spnBrushSize.value
 						
 						case of
 						(
-							(s <= 0.0) : v = v - (units.decodeValue "25.0cm")
+							(mouse.pos.y >= initMousePos.y) : v = v - (units.decodeValue "25.0cm")
 							default:  v = v + (units.decodeValue "25.0cm")
 						)
 						
@@ -904,17 +903,18 @@ rollout rPlacer "Trees List"
 						unhide radius
 						radius.text = "Brush: " + rPlacer.spnBrushSize.value as string
 						o = -rPlacer.spnBrushSize.value
-						radius.pos = brush.pos + [o / 20, -o / 2,0]
+						radius.pos = brush.pos + [o / 20, -o / 1.9, 0]
+						
+						initMousePos = mouse.pos
 					)
 					
-					if(shift) do
+					if(ctrl) do
 					(
-						s = (initMousePos.y - mouse.pos.y)
 						v = rPlacer.spnDistance.value
 						
 						case of
 						(
-							(s <= 0.0) : v = v - (units.decodeValue "10.0cm")
+							(mouse.pos.y >= initMousePos.y): v = v - (units.decodeValue "10.0cm")
 							default:  v = v + (units.decodeValue "10.0cm")
 						)
 						
@@ -930,7 +930,9 @@ rollout rPlacer "Trees List"
 						unhide radius
 						radius.text =  "Distance: " + rPlacer.spnDistance.value as string
 						o = -rPlacer.spnBrushSize.value
-						radius.pos = brush.pos + [o / 20, -o / 2,0]
+						radius.pos = brush.pos + [o / 20, -o / 1.9, 0]
+						
+						initMousePos = mouse.pos
 					)				
 					
 					return #continue
